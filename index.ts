@@ -70,6 +70,9 @@ app.all('/player/login/dashboard', async (req: Request, res: Response) => {
   res.send(htmlContent);
 });
 
+const DEFAULT_CLIENT_DATA =
+  'tankIDName|\ntankIDPass|\nrequestedName|Player\nf|1\nprotocol|210\nversion|4.35\ngame_version|4.35\nplatformID|0\nhash|123456789\nmac|02:00:00:00:00:00\nrid|00000000000000000000000000000000\nsid|00000000000000000000000000000000\nwk|00000000000000000000000000000000\ncountry|us\n';
+
 app.all('/player/growid/login/validate', async (req: Request, res: Response) => {
   try {
     const formData = req.body as Record<string, string>;
@@ -92,9 +95,25 @@ app.all('/player/growid/login/validate', async (req: Request, res: Response) => 
       rawClientData = _token;
     }
 
-    // Ensure rawClientData has basic fields if empty so PlayerLoginDetail.cpp does not reject it
     if (!rawClientData || rawClientData.length < 5) {
-      rawClientData = 'tankIDName|\ntankIDPass|\nrequestedName|Player\nf|1\nprotocol|210\nversion|4.35\nplatformID|0\nmac|02:00:00:00:00:00\nrid|00000000000000000000000000000000\n';
+      rawClientData = DEFAULT_CLIENT_DATA;
+    } else {
+      // Ensure essential fields exist if rawClientData is incomplete
+      if (!rawClientData.includes('hash|')) {
+        rawClientData += 'hash|123456789\n';
+      }
+      if (!rawClientData.includes('game_version|')) {
+        rawClientData += 'game_version|4.35\n';
+      }
+      if (!rawClientData.includes('sid|') && !rawClientData.includes('wk|')) {
+        rawClientData += 'sid|00000000000000000000000000000000\nwk|00000000000000000000000000000000\n';
+      }
+      if (!rawClientData.includes('mac|')) {
+        rawClientData += 'mac|02:00:00:00:00:00\n';
+      }
+      if (!rawClientData.includes('rid|')) {
+        rawClientData += 'rid|00000000000000000000000000000000\n';
+      }
     }
 
     if (!growId) {
@@ -163,7 +182,6 @@ app.all('/player/growid/login/validate', async (req: Request, res: Response) => 
         console.log(`[REGISTER] Successfully registered account '${growId}' from IP ${formattedIp}`);
       } catch (dbErr) {
         console.error('[DB REGISTER ERROR]:', dbErr);
-        // Note: If DB connection fails (e.g. running on Vercel), continue so Master.exe auto-register can handle it.
       }
     } else {
       // Login check against DB if available
@@ -193,7 +211,8 @@ app.all('/player/growid/login/validate', async (req: Request, res: Response) => 
 
     // GTopia C++ PlayerLoginDetail format:
     // loginInfo=<clientData>&growID=<growId>&password=<password>
-    const gtopiaPayload = `loginInfo=${rawClientData}&growID=${growId}&password=${password}`;
+    const cleanClientData = rawClientData.endsWith('\n') ? rawClientData.slice(0, -1) : rawClientData;
+    const gtopiaPayload = `loginInfo=${cleanClientData}&growID=${growId}&password=${password}`;
     const token = Buffer.from(gtopiaPayload).toString('base64');
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -307,10 +326,27 @@ app.all('/player/growid/validate/checktoken', async (req: Request, res: Response
     } catch {}
 
     if (!rawClient || rawClient.length < 5) {
-      rawClient = 'tankIDName|\ntankIDPass|\nrequestedName|Player\nf|1\nprotocol|210\nversion|4.35\nplatformID|0\nmac|02:00:00:00:00:00\nrid|00000000000000000000000000000000\n';
+      rawClient = DEFAULT_CLIENT_DATA;
+    } else {
+      if (!rawClient.includes('hash|')) {
+        rawClient += 'hash|123456789\n';
+      }
+      if (!rawClient.includes('game_version|')) {
+        rawClient += 'game_version|4.35\n';
+      }
+      if (!rawClient.includes('sid|') && !rawClient.includes('wk|')) {
+        rawClient += 'sid|00000000000000000000000000000000\nwk|00000000000000000000000000000000\n';
+      }
+      if (!rawClient.includes('mac|')) {
+        rawClient += 'mac|02:00:00:00:00:00\n';
+      }
+      if (!rawClient.includes('rid|')) {
+        rawClient += 'rid|00000000000000000000000000000000\n';
+      }
     }
 
-    const gtopiaPayload = `loginInfo=${rawClient}&growID=${username}&password=${passwordVal}`;
+    const cleanClient = rawClient.endsWith('\n') ? rawClient.slice(0, -1) : rawClient;
+    const gtopiaPayload = `loginInfo=${cleanClient}&growID=${username}&password=${passwordVal}`;
     const token = Buffer.from(gtopiaPayload).toString('base64');
 
     res.send(
