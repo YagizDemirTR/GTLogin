@@ -3,6 +3,7 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
 import fs from 'fs';
+import mysql from 'mysql2/promise';
 
 const app = express();
 const PORT = 3000;
@@ -12,6 +13,19 @@ app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
+
+// MySQL connection pool for GTopia MariaDB
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || '127.0.0.1',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'gtopia',
+  port: Number(process.env.DB_PORT) || 3306,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  connectTimeout: 5000,
+});
 
 const limiter = rateLimit({
   windowMs: 60_000,
@@ -60,8 +74,16 @@ app.all('/player/growid/login/validate', async (req: Request, res: Response) => 
   try {
     const formData = req.body as Record<string, string>;
     const _token = formData._token || '';
-    const growId = formData.growId || '';
+    const growId = (formData.growId || '').trim();
     const password = formData.password || '';
+    const confirmPassword = formData.password_confirmation || '';
+    const isRegister = formData.isRegister === '1' || Boolean(formData.password_confirmation);
+
+    const clientIp =
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+      req.headers['x-real-ip'] ||
+      req.socket.remoteAddress ||
+      '127.0.0.1';
 
     let rawClientData = '';
     try {
@@ -70,13 +92,111 @@ app.all('/player/growid/login/validate', async (req: Request, res: Response) => 
       rawClientData = _token;
     }
 
+    // Ensure rawClientData has basic fields if empty so PlayerLoginDetail.cpp does not reject it
+    if (!rawClientData || rawClientData.length < 5) {
+      rawClientData = 'tankIDName|\ntankIDPass|\nrequestedName|Player\nf|1\nprotocol|210\nversion|4.35\nplatformID|0\nmac|02:00:00:00:00:00\nrid|00000000000000000000000000000000\n';
+    }
+
+    if (!growId) {
+      return res.status(200).json({
+        status: 'error',
+        message: '`4Oops! ``Please enter a valid `wGrowID``.',
+      });
+    }
+
+    if (!password) {
+      return res.status(200).json({
+        status: 'error',
+        message: '`4Oops! ``Please enter a password.',
+      });
+    }
+
+    if (growId.length < 3 || growId.length > 18) {
+      return res.status(200).json({
+        status: 'error',
+        message: '`4Oops! ``GrowID must be between 3 and 18 characters long.',
+      });
+    }
+
+    if (!/^[A-Za-z0-9#_\-]+$/.test(growId)) {
+      return res.status(200).json({
+        status: 'error',
+        message: '`4Oops! ``GrowID can only contain letters, numbers, _, - and #.',
+      });
+    }
+
+    if (isRegister) {
+      if (password.length < 4 || password.length > 25) {
+        return res.status(200).json({
+          status: 'error',
+          message: '`4Oops! ``Password must be between 4 and 25 characters long.',
+        });
+      }
+
+      if (confirmPassword && password !== confirmPassword) {
+        return res.status(200).json({
+          status: 'error',
+          message: '`4Oops! ``Passwords do not match.',
+        });
+      }
+
+      // Check if GrowID already exists in Database
+      try {
+        const [existing] = await pool.execute<any[]>(
+          'SELECT ID FROM players WHERE LOWER(Name) = LOWER(?) LIMIT 1',
+          [growId]
+        );
+
+        if (existing && existing.length > 0) {
+          return res.status(200).json({
+            status: 'error',
+            message: '`4Oops! ``That `wGrowID`` is already in use. Please choose another one.',
+          });
+        }
+
+        // Insert into players table matching GTopia schema
+        const formattedIp = String(clientIp).slice(0, 15);
+        await pool.execute(
+          'INSERT INTO players (Name, Password, GuestName, PlatformType, IP, CreationDate, LastSeenTime) VALUES (?, UNHEX(MD5(?)), ?, 0, ?, SYSDATE(), NOW())',
+          [growId, password, growId, formattedIp]
+        );
+        console.log(`[REGISTER] Successfully registered account '${growId}' from IP ${formattedIp}`);
+      } catch (dbErr) {
+        console.error('[DB REGISTER ERROR]:', dbErr);
+        // Note: If DB connection fails (e.g. running on Vercel), continue so Master.exe auto-register can handle it.
+      }
+    } else {
+      // Login check against DB if available
+      try {
+        const [userRows] = await pool.execute<any[]>(
+          'SELECT ID, Name FROM players WHERE LOWER(Name) = LOWER(?) AND Password = UNHEX(MD5(?)) LIMIT 1',
+          [growId, password]
+        );
+
+        if (!userRows || userRows.length === 0) {
+          const [nameCheck] = await pool.execute<any[]>(
+            'SELECT ID FROM players WHERE LOWER(Name) = LOWER(?) LIMIT 1',
+            [growId]
+          );
+
+          if (nameCheck && nameCheck.length > 0) {
+            return res.status(200).json({
+              status: 'error',
+              message: '`4Unable to log on:`` That `wGrowID`` doesn\'t seem valid, or the password is wrong.',
+            });
+          }
+        }
+      } catch (dbErr) {
+        console.warn('[DB LOGIN CHECK ERROR]:', dbErr);
+      }
+    }
+
     // GTopia C++ PlayerLoginDetail format:
     // loginInfo=<clientData>&growID=<growId>&password=<password>
-    // For Guest: password is empty (e.g. loginInfo=...&growID=Guest&password=)
-    // For Registered: growID and password are both present
     const gtopiaPayload = `loginInfo=${rawClientData}&growID=${growId}&password=${password}`;
     const token = Buffer.from(gtopiaPayload).toString('base64');
 
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(
       JSON.stringify({
         status: 'success',
@@ -185,6 +305,10 @@ app.all('/player/growid/validate/checktoken', async (req: Request, res: Response
         rawClient = testDecoded;
       }
     } catch {}
+
+    if (!rawClient || rawClient.length < 5) {
+      rawClient = 'tankIDName|\ntankIDPass|\nrequestedName|Player\nf|1\nprotocol|210\nversion|4.35\nplatformID|0\nmac|02:00:00:00:00:00\nrid|00000000000000000000000000000000\n';
+    }
 
     const gtopiaPayload = `loginInfo=${rawClient}&growID=${username}&password=${passwordVal}`;
     const token = Buffer.from(gtopiaPayload).toString('base64');

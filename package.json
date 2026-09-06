@@ -4,17 +4,21 @@
   "version": "1.0.50",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "bun run --watch index.ts"
+    "dev": "tsx watch index.ts",
+    "start": "tsx index.ts",
+    "build": "tsc"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.2.1"
+    "express-rate-limit": "^8.2.1",
+    "mysql2": "^3.24.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "bun-types": "latest",
+    "tsx": "^4.23.13",
     "typescript": "^5.9.3"
   }
 }

@@ -66,11 +66,13 @@
                                   <div class="form-group">
                                     <input id="login-name" class="form-control grow-text" required="required"
                                       placeholder="Your Growtopia Name *" name="growId" value="" type="text"
+                                      minlength="3" maxlength="18"
                                       pattern="[A-Za-z0-9#_\-]+" title="Letters, numbers, #, _ and - are allowed">
                                   </div>
                                   <div class="form-group">
                                     <input id="password" class="form-control grow-text" required="required"
                                       placeholder="Your Growtopia Password *" name="password" type="password" value=""
+                                      minlength="4" maxlength="25"
                                       pattern="[A-Za-z0-9@._!\-#]+"
                                       title="Letters, numbers, and special characters including # are allowed">
                                   </div>
@@ -85,9 +87,11 @@
                                 </form>
                                 <form method="POST" id="registerForm" action="/player/growid/login/validate" accept-charset="UTF-8" class="hidden" role="form" autocomplete="off">
                                   <input name="_token" type="hidden" value="{{ data }}">
+                                  <input name="isRegister" type="hidden" value="1">
                                   <div class="form-group">
                                     <input id="register-name" class="form-control grow-text" required="required"
                                       placeholder="Your Growtopia Name *" name="growId" value="" type="text"
+                                      minlength="3" maxlength="18"
                                       pattern="[A-Za-z0-9#_\-]+" title="Letters, numbers, #, _ and - are allowed">
                                   </div>
                                   <div class="form-group">
@@ -97,12 +101,14 @@
                                   <div class="form-group">
                                     <input id="register-password" class="form-control grow-text" required="required"
                                       placeholder="Your Growtopia Password *" name="password" type="password" value=""
+                                      minlength="4" maxlength="25"
                                       pattern="[A-Za-z0-9@._!\-#]+"
                                       title="Letters, numbers, and special characters including # are allowed">
                                   </div>
                                   <div class="form-group">
                                     <input id="register-confirm-password" class="form-control grow-text" required="required"
                                       placeholder="Confirm Password *" name="password_confirmation" type="password" value=""
+                                      minlength="4" maxlength="25"
                                       pattern="[A-Za-z0-9@._!\-#]+"
                                       title="Letters, numbers, and special characters including # are allowed">
                                   </div>
@@ -165,6 +171,11 @@
                               e.preventDefault();
                               return false;
                             }
+                            if (loginNameInput.value.length < 3) {
+                              e.preventDefault();
+                              alert('GrowID must be at least 3 characters long!');
+                              return false;
+                            }
                             loginSubmitButton.disabled = true;
                             loginSubmitButton.value = 'Logging in...';
                           });
@@ -191,6 +202,18 @@
                           registerForm.addEventListener('submit', function (e) {
                             if (registerSubmitButton.disabled) {
                               e.preventDefault();
+                              return false;
+                            }
+
+                            if (registerNameInput.value.length < 3) {
+                              e.preventDefault();
+                              alert('GrowID must be at least 3 characters long!');
+                              return false;
+                            }
+
+                            if (registerPasswordInput.value.length < 4) {
+                              e.preventDefault();
+                              alert('Password must be at least 4 characters long!');
                               return false;
                             }
 
@@ -253,7 +276,6 @@
     $('.close').on('click', function () {
       window.location = "https://login.growtopiagame.com/player/validate/close"
     });
-    // $('form').submit($('form .grow-button').attr('disabled', 'true'));
 
     var observer = new MutationObserver(function (mutations) {
       mutations.forEach(function (mutation) {
