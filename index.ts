@@ -212,7 +212,8 @@ app.all('/player/growid/login/validate', async (req: Request, res: Response) => 
     // GTopia C++ PlayerLoginDetail format:
     // loginInfo=<clientData>&growID=<growId>&password=<password>
     const cleanClientData = rawClientData.endsWith('\n') ? rawClientData.slice(0, -1) : rawClientData;
-    const gtopiaPayload = `loginInfo=${cleanClientData}&growID=${growId}&password=${password}`;
+    const email = (formData.email || '').trim();
+    const gtopiaPayload = `loginInfo=${cleanClientData}&growId=${growId}&password=${password}&email=${email}&reg=${isRegister ? 1 : 0}&has_reg=${isRegister ? 1 : 0}`;
     const token = Buffer.from(gtopiaPayload).toString('base64');
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
